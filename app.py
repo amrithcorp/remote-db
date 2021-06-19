@@ -12,8 +12,7 @@ from werkzeug.wrappers import response
 #     uri = uri.replace("postgres://", "postgresql://", 1)
 #rest of connection code using the connection string `ur
 
-uri = "postgresql://jhlavouwqmjxxm:48c0476817e35bdf8c30c7af5cba4909980f020681f514b11b24a020eeddeb8e@ec2-54-225-228-142.compute-1.amazonaws.com:5432/dbqjib6769mtga"
-
+uri = "postgresql://wzyaipftdplpig:1c59611146ca33f1472459e448d76d9a0e6808b077dad8476d28655aad26d2f1@ec2-52-23-45-36.compute-1.amazonaws.com:5432/d3ok3di32np3v0"
 app = Flask(__name__)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = uri
