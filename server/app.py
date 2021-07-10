@@ -7,15 +7,10 @@ import datetime
 import re
 import requests
 from werkzeug.wrappers import response
-# uri = os.getenv("DATABASE_URL")  # or other relevant config var
-# if uri.startswith("postgres://"):
-#     uri = uri.replace("postgres://", "postgresql://", 1)
-#rest of connection code using the connection string `ur
 
-uri = "db_uri" #db uri goes here
 app = Flask(__name__)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = uri
+app.config["SQLALCHEMY_DATABASE_URI"] = "uri"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 
@@ -27,11 +22,13 @@ class User(db.Model):
     username = db.Column(db.String(25),nullable = False,unique = True)
     password = db.Column(db.String(25),nullable = False)
     is_admin = db.Column(db.Boolean,nullable = False, default = True)
+    databases = db.relationship('Database',backref = 'owner')
+    jobs = db.relationship('Job',backref = 'owner')
 
 class Job(db.Model):
     id = db.Column(db.Integer, primary_key = True)
-    user_id = db.Column(db.Integer,nullable = False)
-    db_id = db.Column(db.Integer)
+    user_id = db.Column(db.Integer,db.ForeignKey('user.id'),nullable = False)
+    db_id = db.Column(db.Integer,db.ForeignKey('database.id'),nullable = False)
     is_grabbed = db.Column(db.Boolean,nullable = False, default = False)
     is_fulfilled = db.Column(db.Boolean,nullable = False, default = False)
     datetime = db.Column(db.DateTime,nullable = False, default = datetime.datetime.utcnow)
@@ -39,9 +36,10 @@ class Job(db.Model):
 
 class Database(db.Model):
     id = db.Column(db.Integer, primary_key = True)
-    user_id = db.Column(db.Integer)
+    user_id = db.Column(db.Integer,db.ForeignKey('user.id'),nullable = False)
     db_name = db.Column(db.String(25),nullable = False)
     is_init = db.Column(db.Boolean,default = False)
+    jobs = db.relationship('Job',backref = 'dbs')
 
 
 
@@ -85,10 +83,10 @@ def query(username,password,db_name):
                     # find the database
                     database_to_write = Database.query.filter_by(db_name = db_name).first()
                     # create the job
-                    new_job = Job(user_id = user_info.id,
+                    owner = User.query.filter_by(username = username).first()
+                    new_job = Job(owner = owner,
                                 db_id = database_to_write.id,
-                                statement = sql                       
-                                )
+                                statement = sql)
                     db.session.add(new_job)
                     db.session.commit()
                     return "cool beans!"
@@ -101,66 +99,47 @@ def query(username,password,db_name):
         
 @app.route('/query_jobs',methods = ["GET"]) #<token>
 def admin(): #token
-    try:
-        #new_jobs_query = Job.query.filter_by(user_id = 1).all()
-        new_jobs_query = Job.query.all()
-        new_create_query = Database.query.filter_by(is_init = False).all()
-        jobs = {
-            "new_db" : len(new_create_query),
-            "new_jobs" : len(new_jobs_query),
-            "is_error" : False
-        }
-        jobs["CREATE"] = []
-        jobs["SQL"] = []
-        for i in new_create_query:
-            d = Database.query.filter_by(id = i.id).first()
-            u = User.query.filter_by(id = d.user_id).first()
-            is_init = (i.is_init)
-            db_name = (d.db_name)
-            jobs["CREATE"].append({
-                "user" : u.username,
-                "password" : u.password,
-                "database_name" : db_name,
-                "is_init" : is_init
-            })
-        for i in new_jobs_query:
-            from_account = User.query.filter_by(id = i.user_id).first()
-            for_database = Database.query.filter_by(id = i.db_id).first()
-            jobs["SQL"].append({
-                "username" : from_account.username,
-                "password" : from_account.password,
-                "db_name" : for_database.db_name,
-                "time" : i.datetime,
-                "sql_statement" : i.statement,
-                "is_grabbed" : i.is_grabbed,
-                "is_fulfilled" : i.is_fulfilled
-            })
-            db.session.commit()      
-        return jsonify(jobs)
-    except:
-        return jsonify({"is_error":True})
+    response = {}
+    response["CREATE"] = []
+    response["SQL"] = []
+    normal_jobs = Job.query.filter_by(is_fulfilled = False)
+    for job in normal_jobs:
+        u = job.owner
+        d = job.dbs
+        time = job.datetime
+        response["SQL"].append({
+            "username" : u.username,
+            "password" : u.password,
+            "db_name" : d.db_name,
+            "time" : time.__str__(),
+            "sql_statement" : job.statement
+        })
+    create_jobs = Database.query.filter_by(is_init = False)
+    for job in create_jobs:
+        u = job.owner
+        d = job.db_name
+        response["CREATE"].append({
+            "user" : u.username,
+            "password" : u.password,
+            "database_name" : d,
+        })
+    return jsonify(response)
 @app.route('/update',methods = ["POST"])
 def get_verif():
-    response = request.get_json()
-    created_databases = response["CREATED_DB"]
-    for i in created_databases:
-        print(i)
+    response = request.json()
+    return "recv'd"
 
 
 @app.route('/new_db/<username>/<password>/<new_db_name>')
 def new_db(username,password,new_db_name):
-#    try:
     query = User.query.filter_by(username = username,password = password).first()
     new_database = Database(
-        user_id = query.id,
+        owner = query,
         db_name = new_db_name
     )
     db.session.add(new_database)
     db.session.commit()
     return f"commited {new_db_name} to query!"
-#    except:
-#        return jsonify({"error" : "bad user or password"})
-
 
 
 
